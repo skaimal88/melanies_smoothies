@@ -1,5 +1,6 @@
 # Import python packages
 import streamlit as st
+import requests
 ####################from snowflake.snowpark.context import get_active_session
 from snowflake.snowpark.functions import col
 # Write directly to the app
@@ -7,7 +8,6 @@ st.title(f":cup_with_straw: Customize Your Smoothie!:cup_with_straw:")
 st.write(
   """Choose the fruits you want in your custom Smoothie!.
   """)
-
 
 
 name_on_order = st.text_input('Name on Smoothie:')
@@ -48,5 +48,5 @@ if ingredients_list:
 
         st.success(f'Your Smoothie is ordered, {name_on_order}!', icon="✅")
 
-import requests
+
 
