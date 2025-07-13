@@ -1,78 +1,56 @@
-# Import python packages
 import streamlit as st
 import pandas as pd
 import requests
 from snowflake.snowpark.functions import col
 
-# App title and intro
-st.title(f":cup_with_straw: Customize Your Smoothie! :cup_with_straw:")
+st.title(f":cup_with_straw: Customize Your Smoothie!:cup_with_straw:")
 st.write("""Choose the fruits you want in your custom Smoothie!.""")
-
-# User input: Name on smoothie
 name_on_order = st.text_input('Name on Smoothie:')
-if name_on_order:
-    st.write("The name on your Smoothie will be:", name_on_order)
+st.write("The name on your Smoothie will be:", name_on_order)
 
-# Snowflake connection and session
 cnx = st.connection("snowflake")
 session = cnx.session()
 
-# Get fruit data from Snowflake
 my_data_frame = session.table("smoothies.public.fruit_options").select(col('FRUIT_NAME'), col('SEARCH_ON'))
+#st.dataframe(data=my_data_frame, use_container_width=True)
+#st.stop()
+
+# Convert the Snowpark Dataframe to a Pandas DF so we can use the LOC function
 pd_df = my_data_frame.to_pandas()
+# st.dataframe(pd_df)
+# st.stop()
 
-# Filter out rows with invalid SEARCH_ON values
-pd_df = pd_df[pd_df['SEARCH_ON'].notna() & (pd_df['SEARCH_ON'].str.strip() != '')]
-
-# Extract fruit options for selection
-fruit_options = pd_df['FRUIT_NAME'].tolist()
-
-# Multiselect for ingredients
 ingredients_list = st.multiselect(
-    'Choose up to 5 ingredients:',
-    fruit_options,
-    max_selections=5
+    'Choose up to 5 ingredients:'
+    , my_data_frame
+    , max_selections = 5
 )
 
-# Initialize ingredient string
-ingredients_string = ''
 if ingredients_list:
+    ingredients_string = ''
+
     for fruit_chosen in ingredients_list:
-        ingredients_string += fruit_chosen + ', '
+        ingredients_string += fruit_chosen + ' '
+        
+        search_on=pd_df.loc[pd_df['FRUIT_NAME'] == fruit_chosen, 'SEARCH_ON'].iloc[0]
+        #st.write('The search value for ', fruit_chosen,' is ', search_on, '.')
+      
+        st.subheader(fruit_chosen + ' Nutrition Information')
+        fruityvice_response = requests.get("https://fruityvice.com/api/fruit/" + search_on)
+        fv_df =st.dataframe(data=fruityvice_response.json(),use_container_width=True)
+        #smoothiefroot_response = requests.get("https://my.smoothiefroot.com/api/fruit/" + search_on)
+        #sf_df =st.dataframe(data=smoothiefroot_response.json(),use_container_width=True)
+    
+    #st.write(ingredients_string) 
 
-        # Get search value
-        match_row = pd_df.loc[pd_df['FRUIT_NAME'] == fruit_chosen]
-        search_on = match_row['SEARCH_ON'].values[0]
+    
+    my_insert_stmt = """ insert into smoothies.public.orders(ingredients, name_on_order)
+            values ('""" + ingredients_string + """','"""+name_on_order+"""')"""
 
-        st.subheader(f"{fruit_chosen} Nutrition Information")
-
-        # Show spinner while fetching
-        with st.spinner(f"Fetching info for {fruit_chosen}..."):
-            try:
-                smoothiefroot_response = requests.get(f"https://my.smoothiefroot.com/api/fruit/{search_on}")
-                smoothiefroot_response.raise_for_status()
-                data = smoothiefroot_response.json()
-
-                # Convert dict to DataFrame and display
-                data_df = pd.DataFrame.from_dict(data, orient='index', columns=['Value'])
-                data_df.index.name = 'Nutrition Info'
-                st.dataframe(data_df, use_container_width=True)
-
-            except requests.RequestException:
-                pass  # Fail silently on API error
-
-# Remove trailing comma
-ingredients_string = ingredients_string.rstrip(', ')
-
-# Prepare SQL insert statement
-my_insert_stmt = f"""
-    insert into smoothies.public.orders(ingredients, name_on_order)
-    values (%s, %s)
-"""
-
-# Submit order
-if ingredients_list and name_on_order:
+    #st.write(my_insert_stmt)
     time_to_insert = st.button('Submit Order')
+
     if time_to_insert:
-        session.cursor().execute(my_insert_stmt, (ingredients_string, name_on_order))
+        session.sql(my_insert_stmt).collect()
+
         st.success(f'Your Smoothie is ordered, {name_on_order}!', icon="✅")
