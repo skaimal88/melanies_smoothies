@@ -77,4 +77,3 @@ if ingredients_list and name_on_order:
         try:
             session.cursor().execute(my_insert_stmt, (ingredients_string, name_on_order))
             st.success(f'Your Smoothie is ordered, {name_on_order}!', icon="✅")
-       
