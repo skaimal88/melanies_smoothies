@@ -1,60 +1,73 @@
-# Import python packages
+# Import required packages
 import streamlit as st
 import pandas as pd
 import requests
-####################from snowflake.snowpark.context import get_active_session
 from snowflake.snowpark.functions import col
-# Write directly to the app
-st.title(f":cup_with_straw: Customize Your Smoothie!:cup_with_straw:")
-st.write(
-  """Choose the fruits you want in your custom Smoothie!.
-  """)
+
+# App title and intro
+st.title(":cup_with_straw: Customize Your Smoothie! :cup_with_straw:")
+st.write("Choose the fruits you want in your custom Smoothie!")
+
+# Get user input
 name_on_order = st.text_input('Name on Smoothie:')
-st.write("The name on your Smoothie will be:", name_on_order)
+if name_on_order:
+    st.write("The name on your Smoothie will be:", name_on_order)
+
+# Connect to Snowflake
 cnx = st.connection("snowflake")
 session = cnx.session()
-########################session = get_active_session()
-my_data_frame = session.table("smoothies.public.fruit_options").select(col('FRUIT_NAME'), col('SEARCH_ON'))
-#st.dataframe(data=my_data_frame, use_container_width=True)
-#st.stop()
 
-# Convert the Snowpark Dataframe to a Pandas DF so we can use the LOC function
-pd_df = my_data_frame.to_pandas()
-# st.dataframe(pd_df)
-# st.stop()
+# Get fruit options from Snowflake
+snowpark_df = session.table("smoothies.public.fruit_options").select(col('FRUIT_NAME'), col('SEARCH_ON'))
+fruit_df = snowpark_df.to_pandas()
 
-ingredients_list = st.multiselect(
-    'Choose up to 5 ingredients:'
-    , my_data_frame
-    , max_selections =5
+# Create list of fruit names for the multiselect widget
+fruit_list = fruit_df['FRUIT_NAME'].tolist()
+
+# Let user pick ingredients
+selected_fruits = st.multiselect(
+    'Choose up to 5 ingredients:',
+    options=fruit_list,
+    max_selections=5
 )
 
-if ingredients_list:
-    ingredients_string = ''
+# Display API info if fruits are selected
+ingredients_string = ''
+if selected_fruits:
+    for fruit in selected_fruits:
+        # Add to ingredient list
+        ingredients_string += fruit + ', '
 
-    for fruit_chosen in ingredients_list:
-        ingredients_string += fruit_chosen + ' '
-        
-        search_on=pd_df.loc[pd_df['FRUIT_NAME'] == fruit_chosen, 'SEARCH_ON'].iloc[0]
-        st.write('The search value for ', fruit_chosen,' is ', search_on, '.')
-      
-        st.subheader(fruit_chosen + ' Nutrition Information')
-        smoothiefroot_response = requests.get("https://my.smoothiefroot.com/api/fruit/" + search_on)
-        #sf_df =st.dataframe(data=smoothiefroot_response.json(),use_container_width=True)
-    
-    #st.write(ingredients_string) 
+        # Safely extract the corresponding search key
+        match_row = fruit_df[fruit_df['FRUIT_NAME'] == fruit]
+        if not match_row.empty:
+            search_key = match_row['SEARCH_ON'].values[0]
 
-    
-    my_insert_stmt = """ insert into smoothies.public.orders(ingredients, name_on_order)
-            values ('""" + ingredients_string + """','"""+name_on_order+"""')"""
+            # Call external API and show info
+            try:
+                response = requests.get(f"https://my.smoothiefroot.com/api/fruit/{search_key}")
+                response.raise_for_status()
+                nutrition_data = response.json()
+                st.subheader(f"{fruit} Nutrition Information")
+                st.json(nutrition_data)
+            except requests.RequestException as e:
+                st.warning(f"Could not fetch info for {fruit}. Error: {e}")
+        else:
+            st.warning(f"No search value found for {fruit}.")
 
-    #st.write(my_insert_stmt)
-    time_to_insert = st.button('Submit Order')
+# Remove trailing comma from ingredients string
+ingredients_string = ingredients_string.rstrip(', ')
 
-    if time_to_insert:
-        session.sql(my_insert_stmt).collect()
-
-        st.success(f'Your Smoothie is ordered, {name_on_order}!', icon="✅")
-
-
-
+# Submit to database
+if selected_fruits and name_on_order:
+    if st.button("Submit Order"):
+        try:
+            # Use parameterized query to avoid SQL injection
+            session.table("smoothies.public.orders").insert(
+                values={"INGREDIENTS": ingredients_string, "NAME_ON_ORDER": name_on_order}
+            )
+            st.success(f"Your Smoothie is ordered, {name_on_order}!", icon="✅")
+        except Exception as e:
+            st.error(f"Order submission failed. Error: {e}")
+else:
+    st.info("Enter a name and select ingredients to enable order submission.")
