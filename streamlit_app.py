@@ -77,7 +77,4 @@ if ingredients_list and name_on_order:
         try:
             session.cursor().execute(my_insert_stmt, (ingredients_string, name_on_order))
             st.success(f'Your Smoothie is ordered, {name_on_order}!', icon="✅")
-        except Exception as e:
-            st.error(f"Order submission failed. Error: {e}")
-else:
-    st.info("Enter your name and select ingredients to enable the order button.")
+       
