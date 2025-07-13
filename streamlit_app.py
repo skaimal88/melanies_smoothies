@@ -58,8 +58,8 @@ if ingredients_list:
                 data_df.index.name = 'Nutrition Info'
                 st.dataframe(data_df, use_container_width=True)
 
-            except requests.RequestException as e:
-                st.warning(f"Could not fetch info for {fruit_chosen}. Error: {e}")
+            except requests.RequestException:
+                pass  # Fail silently on API error
 
 # Remove trailing comma
 ingredients_string = ingredients_string.rstrip(', ')
@@ -74,6 +74,5 @@ my_insert_stmt = f"""
 if ingredients_list and name_on_order:
     time_to_insert = st.button('Submit Order')
     if time_to_insert:
-        try:
-            session.cursor().execute(my_insert_stmt, (ingredients_string, name_on_order))
-            st.success(f'Your Smoothie is ordered, {name_on_order}!', icon="✅")
+        session.cursor().execute(my_insert_stmt, (ingredients_string, name_on_order))
+        st.success(f'Your Smoothie is ordered, {name_on_order}!', icon="✅")
